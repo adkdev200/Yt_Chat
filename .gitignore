@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+backend/myenv/
+venv/
+.env
+
+# Django
+db.sqlite3
+*.log
+media/
+
+# Chroma DB
+chroma_langchain_db/
+
+# Node / React
+node_modules/
+.pnp/
+.pnp.js
+
+# Build output
+frontend/yt-chat/dist/
+frontend/yt-chat/build/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.bak

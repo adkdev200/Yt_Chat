@@ -1,110 +1,180 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./NextPage.css";
 
-function NextPage() {
-  const [messages, setMessages] = useState([]);
+export default function NextPage() {
+  const [messages, setMessages] = useState(() => {
+    // Load saved messages from localStorage on initial render
+    const saved = localStorage.getItem("yt_chat_messages");
+    return saved ? JSON.parse(saved) : [];
+  });
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    if (!input.trim()) return;
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem("yt_chat_messages", JSON.stringify(messages));
+  }, [messages]);
 
-    const userMessage = { role: "user", content: input };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const query = input.trim();
+    if (!query || loading) return;
+
+    // Add user message
+    const userMessage = { role: "user", content: query };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
-    setIsLoading(true);
+    setLoading(true);
 
-    // Add empty AI message placeholder
-    setMessages((prev) => [...prev, { role: "ai", content: "" }]);
+    // Add an empty AI message placeholder that we'll stream into
+    const aiMessageIndex = messages.length + 1; // +1 because we just added user msg
+    setMessages((prev) => [...prev, { role: "ai", content: "", streaming: true }]);
 
     try {
-      const response = await fetch("http://localhost:8000/chat", {
+      const response = await fetch("http://127.0.0.1:1212/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query: input }),
+        body: JSON.stringify({ query }),
       });
 
-      if (!response.body) throw new Error("ReadableStream not yet supported in this browser.");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Server error");
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
 
-      let done = false;
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-        if (value) {
-          const chunk = decoder.decode(value, { stream: true });
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const lastMsg = newMessages[newMessages.length - 1];
-            if (lastMsg.role === "ai") {
-              lastMsg.content += chunk;
-            }
-            return newMessages;
-          });
-        }
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        setMessages((prev) => {
+          const updated = [...prev];
+          const lastMsg = updated[updated.length - 1];
+          updated[updated.length - 1] = {
+            ...lastMsg,
+            content: lastMsg.content + chunk,
+          };
+          return updated;
+        });
       }
+
+      // Mark streaming as done
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          streaming: false,
+        };
+        return updated;
+      });
     } catch (error) {
-      console.error("Error communicating with chat API:", error);
-    } finally {
-      setIsLoading(false);
+      console.error("Chat error:", error);
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          role: "ai",
+          content: `⚠️ Error: ${error.message}`,
+          streaming: false,
+        };
+        return updated;
+      });
     }
+
+    setLoading(false);
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+    localStorage.removeItem("yt_chat_messages");
   };
 
   return (
     <div className="chat-container">
       <div className="chat-card glass">
+        {/* Header */}
         <div className="chat-header">
-          <h2>AI Content Assistant</h2>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h2>💬 YouTube AI Chat</h2>
+            {messages.length > 0 && (
+              <button
+                onClick={clearChat}
+                style={{
+                  background: "rgba(255,255,255,0.1)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  color: "rgba(255,255,255,0.6)",
+                  padding: "8px 16px",
+                  borderRadius: "20px",
+                  cursor: "pointer",
+                  fontSize: "0.85rem",
+                  transition: "all 0.3s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = "rgba(255,80,80,0.2)";
+                  e.target.style.color = "#ff6b6b";
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = "rgba(255,255,255,0.1)";
+                  e.target.style.color = "rgba(255,255,255,0.6)";
+                }}
+              >
+                Clear Chat
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Messages Area */}
         <div className="chat-messages">
           {messages.length === 0 ? (
-            <div className="empty-state">Ask me anything about the video!</div>
+            <div className="empty-state">
+              <p>✨ Ask anything about the video!</p>
+            </div>
           ) : (
-            messages.map((msg, idx) => (
-              <div key={idx} className={`message-wrapper ${msg.role}`}>
-                <div className={`message-bubble ${msg.role}`}>
+            messages.map((msg, index) => (
+              <div key={index} className={`message-wrapper ${msg.role}`}>
+                <div
+                  className={`message-bubble ${msg.role} ${msg.streaming ? "typing" : ""
+                    }`}
+                >
                   {msg.content}
+                  {msg.streaming && <span className="cursor-blink">▊</span>}
                 </div>
               </div>
             ))
           )}
-          {isLoading && messages[messages.length - 1]?.role !== "ai" && (
-            <div className="message-wrapper ai">
-              <div className="message-bubble ai typing">Thinking...</div>
-            </div>
-          )}
           <div ref={messagesEndRef} />
         </div>
-        <form className="chat-input-form" onSubmit={sendMessage}>
+
+        {/* Input Form */}
+        <form className="chat-input-form" onSubmit={handleSubmit}>
           <input
             type="text"
-            className="chat-input glass-input"
+            className="chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your message..."
-            disabled={isLoading}
+            placeholder="Type your question..."
+            disabled={loading}
           />
-          <button type="submit" className="chat-submit-btn" disabled={isLoading || !input.trim()}>
-            Send
+          <button
+            type="submit"
+            className="chat-submit-btn"
+            disabled={loading || !input.trim()}
+          >
+            {loading ? "⏳" : "Send"}
           </button>
         </form>
       </div>
     </div>
   );
 }
-
-export default NextPage;

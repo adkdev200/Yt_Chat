@@ -131,7 +131,6 @@ def generate_response(msgs):
         text = chunk.content
         if isinstance(text, str):
             ai_response += text
-            print(text)
             # yield to StreamingHttpResponse
             yield text
     # Append the completed AI message back to the global state

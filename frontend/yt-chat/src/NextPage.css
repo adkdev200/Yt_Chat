@@ -177,3 +177,16 @@ body {
     cursor: not-allowed;
     box-shadow: none;
 }
+
+/* Blinking cursor for streaming */
+.cursor-blink {
+    animation: blink 0.8s steps(2, start) infinite;
+    margin-left: 2px;
+    font-size: 0.9em;
+}
+
+@keyframes blink {
+    to {
+        visibility: hidden;
+    }
+}
